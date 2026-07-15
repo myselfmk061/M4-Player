@@ -215,6 +215,13 @@ private fun PlayerContent(
 
     var isLandscape by remember { mutableStateOf(autoRotate) }
 
+    LaunchedEffect(autoRotate) {
+        isLandscape = autoRotate
+    }
+
+    var isLeftDoubleTapActive by remember { mutableStateOf(false) }
+    var isRightDoubleTapActive by remember { mutableStateOf(false) }
+
     // Subtitles State
     var subtitlesEnabled by remember { mutableStateOf(false) }
     var subtitles by remember { mutableStateOf<List<SubtitleCue>>(emptyList()) }
@@ -381,18 +388,22 @@ private fun PlayerContent(
                                     // Double-tap left: Seek backward
                                     val newPos = (player.currentPosition - seekMs).coerceAtLeast(0)
                                     player.seekTo(newPos)
-                                    seekProgressOverlayValue = "-${doubleTapSeekSeconds}s"
+                                    seekProgressOverlayValue = "-${doubleTapSeekSeconds}s ⏪"
+                                    isLeftDoubleTapActive = true
                                     coroutineScope.launch {
-                                        delay(800)
+                                        delay(650)
+                                        isLeftDoubleTapActive = false
                                         seekProgressOverlayValue = null
                                     }
                                 } else if (tapX > viewWidth * 0.65f) {
                                     // Double-tap right: Seek forward
                                     val newPos = (player.currentPosition + seekMs).coerceAtMost(player.duration)
                                     player.seekTo(newPos)
-                                    seekProgressOverlayValue = "+${doubleTapSeekSeconds}s"
+                                    seekProgressOverlayValue = "+${doubleTapSeekSeconds}s ⏩"
+                                    isRightDoubleTapActive = true
                                     coroutineScope.launch {
-                                        delay(800)
+                                        delay(650)
+                                        isRightDoubleTapActive = false
                                         seekProgressOverlayValue = null
                                     }
                                 }
@@ -571,6 +582,66 @@ private fun PlayerContent(
             }
         }
 
+        // Double-tap Pulse Ripple overlay
+        Row(modifier = Modifier.fillMaxSize()) {
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight()
+                    .background(
+                        if (isLeftDoubleTapActive) Color.White.copy(alpha = 0.12f)
+                        else Color.Transparent
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                if (isLeftDoubleTapActive) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(
+                            imageVector = Icons.Default.FastRewind,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(48.dp)
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = "-${doubleTapSeekSeconds}s",
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 16.sp
+                        )
+                    }
+                }
+            }
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight()
+                    .background(
+                        if (isRightDoubleTapActive) Color.White.copy(alpha = 0.12f)
+                        else Color.Transparent
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                if (isRightDoubleTapActive) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(
+                            imageVector = Icons.Default.FastForward,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(48.dp)
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = "+${doubleTapSeekSeconds}s",
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 16.sp
+                        )
+                    }
+                }
+            }
+        }
+
         // Custom Beautiful Controls
         AnimatedVisibility(
             visible = isControlsVisible,
@@ -583,7 +654,7 @@ private fun PlayerContent(
                     .background(
                         Brush.verticalGradient(
                             colors = listOf(
-                                Color.Black.copy(alpha = 0.6f),
+                                Color.Black.copy(alpha = 0.65f),
                                 Color.Transparent,
                                 Color.Black.copy(alpha = 0.7f)
                             )
@@ -617,286 +688,338 @@ private fun PlayerContent(
                         }
                     }
                 } else {
-                    // Full controls overlay centered and consolidated at the bottom
-                    Column(
-                        modifier = Modifier.fillMaxSize(),
-                        verticalArrangement = Arrangement.Bottom
+                    // Transparent controls layout: Top Bar and Bottom Bar floating
+                    Box(
+                        modifier = Modifier.fillMaxSize()
                     ) {
-                        Card(
+                        // 1. TOP TITLE BAR (transparent, with statusBarsPadding)
+                        Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(16.dp)
-                                .navigationBarsPadding(),
-                            shape = RoundedCornerShape(20.dp),
-                            colors = CardDefaults.cardColors(
-                                containerColor = Color.Black.copy(alpha = 0.8f)
-                            ),
-                            elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+                                .align(Alignment.TopCenter)
+                                .statusBarsPadding()
+                                .padding(horizontal = 16.dp, vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(16.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally
+                            IconButton(
+                                onClick = onBack,
+                                modifier = Modifier.testTag("player_back_button")
                             ) {
-                                // 1. Title and Action Row
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    IconButton(
-                                        onClick = onBack,
-                                        modifier = Modifier.testTag("player_back_button")
-                                    ) {
-                                        Icon(Icons.Default.ArrowBack, "Back", tint = Color.White)
-                                    }
+                                Icon(Icons.Default.ArrowBack, "Back", tint = Color.White)
+                            }
 
-                                    Spacer(modifier = Modifier.width(8.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
 
-                                    Text(
-                                        text = title,
-                                        color = Color.White,
-                                        fontSize = 15.sp,
-                                        fontWeight = FontWeight.SemiBold,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                        modifier = Modifier.weight(1f)
-                                    )
+                            Text(
+                                text = title,
+                                color = Color.White,
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f)
+                            )
 
-                                    // Rotation Button
-                                    IconButton(onClick = {
-                                        isLandscape = !isLandscape
-                                        if (isLandscape) {
-                                            activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
-                                        } else {
-                                            activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
-                                        }
-                                    }) {
-                                        Icon(
-                                            if (isLandscape) Icons.Outlined.ScreenRotation else Icons.Outlined.ScreenLockPortrait,
-                                            "Rotate Screen",
-                                            tint = Color.White
-                                        )
-                                    }
-
-                                    // PiP Support Button (Android 8.0+)
-                                    IconButton(onClick = {
-                                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                                            activity?.enterPictureInPictureMode()
-                                        }
-                                    }) {
-                                        Icon(Icons.Outlined.PictureInPicture, "PiP", tint = Color.White)
-                                    }
-
-                                    // Sleep Timer Button
-                                    IconButton(onClick = {
-                                        val current = sleepTimerMinutesRemaining
-                                        if (current == null) {
-                                            sleepTimerMinutesRemaining = 15
-                                            sleepTimerJob = coroutineScope.launch {
-                                                var rem = 15
-                                                while (rem > 0) {
-                                                    delay(60000)
-                                                    rem--
-                                                    sleepTimerMinutesRemaining = rem
-                                                }
-                                                player.pause()
-                                                sleepTimerMinutesRemaining = null
-                                            }
-                                        } else if (current == 15) {
-                                            sleepTimerMinutesRemaining = 30
-                                            sleepTimerJob?.cancel()
-                                            sleepTimerJob = coroutineScope.launch {
-                                                var rem = 30
-                                                while (rem > 0) {
-                                                    delay(60000)
-                                                    rem--
-                                                    sleepTimerMinutesRemaining = rem
-                                                }
-                                                player.pause()
-                                                sleepTimerMinutesRemaining = null
-                                            }
-                                        } else {
-                                            sleepTimerJob?.cancel()
-                                            sleepTimerMinutesRemaining = null
-                                        }
-                                    }) {
-                                        BadgedBox(
-                                            badge = {
-                                                sleepTimerMinutesRemaining?.let { min ->
-                                                    Badge { Text("${min}m", color = Color.White, fontSize = 9.sp) }
-                                                }
-                                            }
-                                        ) {
-                                            Icon(Icons.Outlined.Snooze, "Sleep Timer", tint = Color.White)
-                                        }
-                                    }
-
-                                    // Track selections (Audio & Subtitles)
-                                    IconButton(onClick = { showTrackSelectionDialog = true }) {
-                                        Icon(Icons.Outlined.Subtitles, "Audio/Subtitles", tint = Color.White)
-                                    }
+                            // Rotation Button (Now in Top Bar)
+                            IconButton(onClick = {
+                                isLandscape = !isLandscape
+                                if (isLandscape) {
+                                    activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+                                } else {
+                                    activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
                                 }
+                            }) {
+                                Icon(
+                                    if (isLandscape) Icons.Outlined.ScreenRotation else Icons.Outlined.ScreenLockPortrait,
+                                    "Rotate Screen",
+                                    tint = Color.White
+                                )
+                            }
 
-                                Spacer(modifier = Modifier.height(8.dp))
+                            // PiP Support Button (Android 8.0+)
+                            IconButton(onClick = {
+                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                                    activity?.enterPictureInPictureMode()
+                                }
+                            }) {
+                                Icon(Icons.Outlined.PictureInPicture, "PiP", tint = Color.White)
+                            }
 
-                                // 2. Slider / Timeline Row
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    verticalAlignment = Alignment.CenterVertically
+                            // Sleep Timer Button
+                            IconButton(onClick = {
+                                val current = sleepTimerMinutesRemaining
+                                if (current == null) {
+                                    sleepTimerMinutesRemaining = 15
+                                    sleepTimerJob = coroutineScope.launch {
+                                        var rem = 15
+                                        while (rem > 0) {
+                                            delay(60000)
+                                            rem--
+                                            sleepTimerMinutesRemaining = rem
+                                        }
+                                        player.pause()
+                                        sleepTimerMinutesRemaining = null
+                                    }
+                                } else if (current == 15) {
+                                    sleepTimerMinutesRemaining = 30
+                                    sleepTimerJob?.cancel()
+                                    sleepTimerJob = coroutineScope.launch {
+                                        var rem = 30
+                                        while (rem > 0) {
+                                            delay(60000)
+                                            rem--
+                                            sleepTimerMinutesRemaining = rem
+                                        }
+                                        player.pause()
+                                        sleepTimerMinutesRemaining = null
+                                    }
+                                } else {
+                                    sleepTimerJob?.cancel()
+                                    sleepTimerMinutesRemaining = null
+                                }
+                            }) {
+                                BadgedBox(
+                                    badge = {
+                                        sleepTimerMinutesRemaining?.let { min ->
+                                            Badge { Text("${min}m", color = Color.White, fontSize = 9.sp) }
+                                        }
+                                    }
                                 ) {
+                                    Icon(Icons.Outlined.Snooze, "Sleep Timer", tint = Color.White)
+                                }
+                            }
+
+                            // Track selections (Audio & Subtitles)
+                            IconButton(onClick = { showTrackSelectionDialog = true }) {
+                                Icon(Icons.Outlined.Subtitles, "Audio/Subtitles", tint = Color.White)
+                            }
+                        }
+
+                        // 2. BOTTOM CONTROL BAR (transparent, with navigationBarsPadding)
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .align(Alignment.BottomCenter)
+                                .navigationBarsPadding()
+                                .padding(horizontal = 16.dp, vertical = 16.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            // 2a. Slider / Timeline Row
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = formatTime(currentPosition),
+                                    color = Color.White,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Medium
+                                )
+
+                                Slider(
+                                    value = if (duration > 0) currentPosition.toFloat() else 0f,
+                                    onValueChange = { player.seekTo(it.toLong()) },
+                                    valueRange = 0f..(if (duration > 0) duration.toFloat() else 1f),
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .padding(horizontal = 8.dp)
+                                        .testTag("playback_seekbar"),
+                                    colors = SliderDefaults.colors(
+                                        thumbColor = Color(0xFF22D3EE),
+                                        activeTrackColor = Color(0xFF22D3EE),
+                                        inactiveTrackColor = Color.White.copy(alpha = 0.3f)
+                                    )
+                                )
+
+                                Text(
+                                    text = formatTime(duration),
+                                    color = Color.White,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.height(12.dp))
+
+                            // 2b. Primary Playback Buttons Row
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                // Playback Speed controls
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier
+                                        .background(Color.White.copy(alpha = 0.15f), RoundedCornerShape(12.dp))
+                                        .clickable {
+                                            val speed = when (playbackSpeed) {
+                                                0.5f -> 1.0f
+                                                1.0f -> 1.5f
+                                                1.5f -> 2.0f
+                                                2.0f -> 3.0f
+                                                3.0f -> 0.5f
+                                                else -> 1.0f
+                                            }
+                                            player.setPlaybackSpeed(speed)
+                                            playbackSpeed = speed
+                                        }
+                                        .padding(horizontal = 10.dp, vertical = 8.dp)
+                                ) {
+                                    Icon(
+                                        Icons.Outlined.Speed,
+                                        "Speed",
+                                        tint = Color.White,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
                                     Text(
-                                        text = formatTime(currentPosition),
+                                        text = "${playbackSpeed}x",
                                         color = Color.White,
                                         fontSize = 11.sp,
-                                        fontWeight = FontWeight.Medium
-                                    )
-
-                                    Slider(
-                                        value = if (duration > 0) currentPosition.toFloat() else 0f,
-                                        onValueChange = { player.seekTo(it.toLong()) },
-                                        valueRange = 0f..(if (duration > 0) duration.toFloat() else 1f),
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .padding(horizontal = 8.dp)
-                                            .testTag("playback_seekbar"),
-                                        colors = SliderDefaults.colors(
-                                            thumbColor = Color(0xFF38BDF8),
-                                            activeTrackColor = Color(0xFF38BDF8),
-                                            inactiveTrackColor = Color.White.copy(alpha = 0.3f)
-                                        )
-                                    )
-
-                                    Text(
-                                        text = formatTime(duration),
-                                        color = Color.White,
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Medium
+                                        fontWeight = FontWeight.SemiBold
                                     )
                                 }
 
-                                Spacer(modifier = Modifier.height(8.dp))
-
-                                // 3. Primary Playback Buttons Row
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
+                                // Lock button
+                                IconButton(
+                                    onClick = {
+                                        isLocked = true
+                                        isControlsVisible = true
+                                    },
+                                    modifier = Modifier
+                                        .background(Color.White.copy(alpha = 0.1f), CircleShape)
+                                        .size(40.dp)
                                 ) {
-                                    // Playback Speed controls
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        modifier = Modifier
-                                            .background(Color.White.copy(alpha = 0.15f), RoundedCornerShape(12.dp))
-                                            .clickable {
-                                                val speed = when (playbackSpeed) {
-                                                    0.5f -> 1.0f
-                                                    1.0f -> 1.5f
-                                                    1.5f -> 2.0f
-                                                    2.0f -> 3.0f
-                                                    3.0f -> 0.5f
-                                                    else -> 1.0f
-                                                }
-                                                player.setPlaybackSpeed(speed)
-                                                playbackSpeed = speed
-                                            }
-                                            .padding(horizontal = 10.dp, vertical = 6.dp)
-                                    ) {
+                                    Icon(Icons.Default.Lock, "Lock Screen", tint = Color.White, modifier = Modifier.size(18.dp))
+                                }
+
+                                // Seek Backward Button (Custom Seek Step)
+                                IconButton(
+                                    onClick = {
+                                        val newPos = (player.currentPosition - doubleTapSeekSeconds * 1000L).coerceAtLeast(0)
+                                        player.seekTo(newPos)
+                                    },
+                                    modifier = Modifier.size(44.dp)
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
                                         Icon(
-                                            Icons.Outlined.Speed,
-                                            "Speed",
+                                            imageVector = Icons.Default.Replay,
+                                            contentDescription = "Rewind ${doubleTapSeekSeconds}s",
                                             tint = Color.White,
-                                            modifier = Modifier.size(14.dp)
+                                            modifier = Modifier.size(30.dp)
                                         )
-                                        Spacer(modifier = Modifier.width(4.dp))
                                         Text(
-                                            text = "${playbackSpeed}x",
+                                            text = "$doubleTapSeekSeconds",
                                             color = Color.White,
-                                            fontSize = 11.sp,
-                                            fontWeight = FontWeight.SemiBold
+                                            fontSize = 9.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            modifier = Modifier.padding(top = 4.dp)
                                         )
                                     }
+                                }
 
-                                    // Lock button
-                                    IconButton(
-                                        onClick = {
-                                            isLocked = true
-                                            isControlsVisible = true
-                                        },
-                                        modifier = Modifier
-                                            .background(Color.White.copy(alpha = 0.1f), CircleShape)
-                                            .size(36.dp)
-                                    ) {
-                                        Icon(Icons.Default.Lock, "Lock Screen", tint = Color.White, modifier = Modifier.size(16.dp))
-                                    }
+                                // Play Pause Pulsing Icon
+                                Box(
+                                    modifier = Modifier
+                                        .background(Color.White.copy(alpha = 0.2f), CircleShape)
+                                        .padding(4.dp)
+                                        .clip(CircleShape)
+                                        .background(Color.White, CircleShape)
+                                        .clickable {
+                                            if (isPlaying) player.pause() else player.play()
+                                        }
+                                        .size(56.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                                        contentDescription = "Play/Pause",
+                                        tint = Color.Black,
+                                        modifier = Modifier.size(32.dp)
+                                    )
+                                }
 
-                                    // Seek Backward
-                                    IconButton(
-                                        onClick = {
-                                            val newPos = (player.currentPosition - 10000).coerceAtLeast(0)
-                                            player.seekTo(newPos)
-                                        },
-                                        modifier = Modifier.size(40.dp)
-                                    ) {
-                                        Icon(Icons.Default.Replay10, "Rewind 10s", tint = Color.White, modifier = Modifier.size(28.dp))
-                                    }
-
-                                    // Play Pause Pulsing Icon
-                                    Box(
-                                        modifier = Modifier
-                                            .background(Color.White.copy(alpha = 0.2f), CircleShape)
-                                            .padding(4.dp)
-                                            .clip(CircleShape)
-                                            .background(Color.White, CircleShape)
-                                            .clickable {
-                                                if (isPlaying) player.pause() else player.play()
-                                            }
-                                            .size(48.dp),
-                                        contentAlignment = Alignment.Center
-                                    ) {
+                                // Seek Forward Button (Custom Seek Step)
+                                IconButton(
+                                    onClick = {
+                                        val newPos = (player.currentPosition + doubleTapSeekSeconds * 1000L).coerceAtMost(player.duration)
+                                        player.seekTo(newPos)
+                                    },
+                                    modifier = Modifier.size(44.dp)
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
                                         Icon(
-                                            imageVector = if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                                            contentDescription = "Play/Pause",
-                                            tint = Color.Black,
-                                            modifier = Modifier.size(28.dp)
-                                        )
-                                    }
-
-                                    // Seek Forward
-                                    IconButton(
-                                        onClick = {
-                                            val newPos = (player.currentPosition + 10000).coerceAtMost(player.duration)
-                                            player.seekTo(newPos)
-                                        },
-                                        modifier = Modifier.size(40.dp)
-                                    ) {
-                                        Icon(Icons.Default.Forward10, "Forward 10s", tint = Color.White, modifier = Modifier.size(28.dp))
-                                    }
-
-                                    // Aspect Ratio cycling
-                                    IconButton(
-                                        onClick = {
-                                            aspectRatio = when (aspectRatio) {
-                                                VideoAspectRatio.FIT -> VideoAspectRatio.FILL
-                                                VideoAspectRatio.FILL -> VideoAspectRatio.STRETCH
-                                                VideoAspectRatio.STRETCH -> VideoAspectRatio.FIT
-                                            }
-                                        },
-                                        modifier = Modifier
-                                            .background(Color.White.copy(alpha = 0.1f), CircleShape)
-                                            .size(36.dp)
-                                    ) {
-                                        Icon(
-                                            imageVector = when (aspectRatio) {
-                                                VideoAspectRatio.FIT -> Icons.Outlined.AspectRatio
-                                                VideoAspectRatio.FILL -> Icons.Default.CropFree
-                                                VideoAspectRatio.STRETCH -> Icons.Default.FitScreen
-                                            },
-                                            contentDescription = "Aspect Ratio",
+                                            imageVector = Icons.Default.Forward,
+                                            contentDescription = "Forward ${doubleTapSeekSeconds}s",
                                             tint = Color.White,
-                                            modifier = Modifier.size(16.dp)
+                                            modifier = Modifier.size(30.dp)
+                                        )
+                                        Text(
+                                            text = "$doubleTapSeekSeconds",
+                                            color = Color.White,
+                                            fontSize = 9.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            modifier = Modifier.padding(top = 4.dp)
                                         )
                                     }
+                                }
+
+                                // Custom Seek Step Selector (Cycle seek step duration directly)
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier
+                                        .background(Color.White.copy(alpha = 0.15f), RoundedCornerShape(12.dp))
+                                        .clickable {
+                                            val nextStep = when (doubleTapSeekSeconds) {
+                                                10 -> 15
+                                                15 -> 30
+                                                30 -> 60
+                                                60 -> 10
+                                                else -> 10
+                                            }
+                                            viewModel.updateDoubleTapSeekSeconds(nextStep)
+                                        }
+                                        .padding(horizontal = 10.dp, vertical = 8.dp)
+                                ) {
+                                    Icon(
+                                        Icons.Outlined.Timer,
+                                        "Seek Step",
+                                        tint = Color.White,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = "${doubleTapSeekSeconds}s",
+                                        color = Color.White,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                }
+
+                                // Aspect Ratio cycling
+                                IconButton(
+                                    onClick = {
+                                        aspectRatio = when (aspectRatio) {
+                                            VideoAspectRatio.FIT -> VideoAspectRatio.FILL
+                                            VideoAspectRatio.FILL -> VideoAspectRatio.STRETCH
+                                            VideoAspectRatio.STRETCH -> VideoAspectRatio.FIT
+                                        }
+                                    },
+                                    modifier = Modifier
+                                        .background(Color.White.copy(alpha = 0.1f), CircleShape)
+                                        .size(40.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = when (aspectRatio) {
+                                            VideoAspectRatio.FIT -> Icons.Outlined.AspectRatio
+                                            VideoAspectRatio.FILL -> Icons.Default.CropFree
+                                            VideoAspectRatio.STRETCH -> Icons.Default.FitScreen
+                                        },
+                                        contentDescription = "Aspect Ratio",
+                                        tint = Color.White,
+                                        modifier = Modifier.size(18.dp)
+                                    )
                                 }
                             }
                         }
