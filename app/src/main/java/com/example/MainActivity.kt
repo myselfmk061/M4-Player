@@ -11,7 +11,13 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.animation.*
+import androidx.compose.animation.core.*
+import androidx.compose.ui.graphics.graphicsLayer
+import kotlinx.coroutines.delay
+import androidx.compose.foundation.Image
+import androidx.compose.ui.res.painterResource
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -23,6 +29,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
@@ -67,7 +74,7 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             val accent by viewModel.selectedAccent.collectAsState()
-            MyApplicationTheme(accent = accent) {
+            MyApplicationTheme(accent = accent, dynamicColor = false) {
                 MainAppContent(viewModel = viewModel)
             }
         }
@@ -117,7 +124,18 @@ fun MainAppContent(viewModel: MPlayerViewModel) {
         }
     }
 
-    if (activeVideoItem != null || !activeNetworkUrl.isNullOrEmpty()) {
+    var showSplash by remember { mutableStateOf(true) }
+
+    LaunchedEffect(Unit) {
+        delay(2200)
+        showSplash = false
+    }
+
+    Crossfade(targetState = showSplash, label = "SplashTransition", animationSpec = tween(700)) { isSplash ->
+        if (isSplash) {
+            SplashScreen()
+        } else {
+            if (activeVideoItem != null || !activeNetworkUrl.isNullOrEmpty()) {
         // Render Full-Screen Immersive Playback Mode (No Scaffold or Navigation showing)
         Box(
             modifier = Modifier
@@ -150,20 +168,13 @@ fun MainAppContent(viewModel: MPlayerViewModel) {
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.Center
                         ) {
-                            Box(
+                            Image(
+                                painter = painterResource(id = R.drawable.ic_logo),
+                                contentDescription = "M4 Player Logo",
                                 modifier = Modifier
-                                    .size(36.dp)
+                                    .size(38.dp)
                                     .clip(RoundedCornerShape(8.dp))
-                                    .background(MaterialTheme.colorScheme.primaryContainer),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.PlayArrow,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.size(24.dp)
-                                )
-                            }
+                            )
                             Spacer(modifier = Modifier.width(10.dp))
                             Text(
                                 text = "M4 Player",
@@ -332,6 +343,8 @@ fun MainAppContent(viewModel: MPlayerViewModel) {
             }
         }
     }
+        }
+    }
 }
 
 @Composable
@@ -386,6 +399,147 @@ fun PermissionOnboardingView(
             Icon(Icons.Default.Security, null)
             Spacer(modifier = Modifier.width(8.dp))
             Text("Grant Media Permission")
+        }
+    }
+}
+
+@Composable
+fun SplashScreen() {
+    val infiniteTransition = rememberInfiniteTransition(label = "SplashTransition")
+    
+    val pulseScale by infiniteTransition.animateFloat(
+        initialValue = 0.93f,
+        targetValue = 1.07f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1200, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "pulseScale"
+    )
+
+    val ringRotation by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(8000, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "ringRotation"
+    )
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(
+                Brush.verticalGradient(
+                    colors = listOf(
+                        Color(0xFF0C0A0F),
+                        Color(0xFF181524),
+                        Color(0xFF0F0E17)
+                    )
+                )
+            ),
+        contentAlignment = Alignment.Center
+    ) {
+        Box(
+            modifier = Modifier
+                .size(300.dp)
+                .align(Alignment.Center)
+                .background(
+                    Brush.radialGradient(
+                        colors = listOf(
+                            Color(0xFF8B5CF6).copy(alpha = 0.12f),
+                            Color.Transparent
+                        )
+                    )
+                )
+        )
+
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+            modifier = Modifier.padding(24.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(130.dp)
+                    .graphicsLayer {
+                        scaleX = pulseScale
+                        scaleY = pulseScale
+                    },
+                contentAlignment = Alignment.Center
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .graphicsLayer {
+                            rotationZ = ringRotation
+                        }
+                        .border(
+                            width = 3.dp,
+                            brush = Brush.sweepGradient(
+                                colors = listOf(
+                                    Color(0xFF8B5CF6),
+                                    Color(0xFFEC4899),
+                                    Color(0xFF06B6D4),
+                                    Color(0xFF8B5CF6)
+                                )
+                            ),
+                            shape = CircleShape
+                        )
+                )
+
+                Image(
+                    painter = painterResource(id = R.drawable.ic_logo),
+                    contentDescription = "M4 Player Logo",
+                    modifier = Modifier
+                        .size(105.dp)
+                        .clip(RoundedCornerShape(24.dp))
+                )
+            }
+
+            Spacer(modifier = Modifier.height(36.dp))
+
+            Text(
+                text = "M4 PLAYER",
+                fontWeight = FontWeight.Black,
+                fontSize = 28.sp,
+                letterSpacing = 6.sp,
+                color = Color.White
+            )
+
+            Spacer(modifier = Modifier.height(6.dp))
+
+            Text(
+                text = "PREMIUM MEDIA EXPERIENCE",
+                fontWeight = FontWeight.Bold,
+                fontSize = 11.sp,
+                letterSpacing = 2.sp,
+                color = Color(0xFF94A3B8)
+            )
+
+            Spacer(modifier = Modifier.height(48.dp))
+
+            CircularProgressIndicator(
+                modifier = Modifier.size(28.dp),
+                color = Color(0xFF8B5CF6),
+                strokeWidth = 2.5.dp
+            )
+        }
+
+        Column(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = 40.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                text = "POWERED BY JETPACK MEDIA3",
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 9.sp,
+                letterSpacing = 1.5.sp,
+                color = Color.White.copy(alpha = 0.4f)
+            )
         }
     }
 }

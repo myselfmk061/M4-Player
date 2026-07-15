@@ -67,6 +67,7 @@ import kotlinx.coroutines.launch
 import java.io.File
 import kotlin.math.abs
 
+@OptIn(UnstableApi::class)
 enum class VideoAspectRatio(val label: String, val mode: Int) {
     FIT("Fit", AspectRatioFrameLayout.RESIZE_MODE_FIT),
     FILL("Fill", AspectRatioFrameLayout.RESIZE_MODE_ZOOM),

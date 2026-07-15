@@ -172,7 +172,7 @@ private fun getLightColorSchemeForAccent(accent: String): ColorScheme {
 fun MyApplicationTheme(
   darkTheme: Boolean = isSystemInDarkTheme(),
   // Dynamic color is available on Android 12+
-  dynamicColor: Boolean = true,
+  dynamicColor: Boolean = false,
   accent: String = "Purple",
   content: @Composable () -> Unit,
 ) {

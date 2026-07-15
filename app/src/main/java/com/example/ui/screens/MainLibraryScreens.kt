@@ -1010,18 +1010,17 @@ fun SettingsScreen(viewModel: MPlayerViewModel) {
     val context = LocalContext.current
     val scrollState = rememberScrollState()
 
-    // Observe StateFlows from ViewModel
-    val hardwareDecoding by viewModel.hardwareDecoding.collectAsState()
-    val audioBoost by viewModel.audioBoost.collectAsState()
-    val backgroundPlayback by viewModel.backgroundPlayback.collectAsState()
-    val gestureSeeking by viewModel.gestureSeeking.collectAsState()
-    val autoPlayNext by viewModel.autoPlayNext.collectAsState()
-    val doubleTapSeekSeconds by viewModel.doubleTapSeekSeconds.collectAsState()
-    val subtitleTextScale by viewModel.subtitleTextScale.collectAsState()
-    val subtitleColor by viewModel.subtitleColor.collectAsState()
-    val autoRotate by viewModel.autoRotate.collectAsState()
-    val keepScreenOn by viewModel.keepScreenOn.collectAsState()
-    val selectedAccent by viewModel.selectedAccent.collectAsState()
+    // Observe essential StateFlows from source of truth
+    val dbKeepScreenOn by viewModel.keepScreenOn.collectAsState()
+    val dbGestureSeeking by viewModel.gestureSeeking.collectAsState()
+    val dbBackgroundPlayback by viewModel.backgroundPlayback.collectAsState()
+    val dbSelectedAccent by viewModel.selectedAccent.collectAsState()
+
+    // Local mutable state drafts for unsaved changes
+    var localKeepScreenOn by remember(dbKeepScreenOn) { mutableStateOf(dbKeepScreenOn) }
+    var localGestureSeeking by remember(dbGestureSeeking) { mutableStateOf(dbGestureSeeking) }
+    var localBackgroundPlayback by remember(dbBackgroundPlayback) { mutableStateOf(dbBackgroundPlayback) }
+    var localSelectedAccent by remember(dbSelectedAccent) { mutableStateOf(dbSelectedAccent) }
 
     Column(
         modifier = Modifier
@@ -1032,64 +1031,13 @@ fun SettingsScreen(viewModel: MPlayerViewModel) {
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         Text(
-            text = "Preferences",
+            text = "Settings",
             fontWeight = FontWeight.Bold,
             fontSize = 24.sp,
             modifier = Modifier.padding(bottom = 4.dp)
         )
 
-        // CARD 1: DECODER CONFIGURATION
-        Card(
-            shape = RoundedCornerShape(16.dp),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        imageVector = Icons.Default.Hardware,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = "Decoder Configuration",
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 14.sp,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                }
-                Spacer(modifier = Modifier.height(16.dp))
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text("Hardware Acceleration", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
-                        Text("Leverage device GPU chipsets for optimal hardware decoding.", fontSize = 11.sp, color = Color.Gray)
-                    }
-                    Switch(checked = hardwareDecoding, onCheckedChange = { viewModel.updateHardwareDecoding(it) })
-                }
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text("Audio Boost (SW)", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
-                        Text("Amplify software maximum volume level up to 200%.", fontSize = 11.sp, color = Color.Gray)
-                    }
-                    Switch(checked = audioBoost, onCheckedChange = { viewModel.updateAudioBoost(it) })
-                }
-            }
-        }
-
-        // CARD 2: PLAYER & PLAYBACK
+        // CARD 1: PLAYBACK SETTINGS
         Card(
             shape = RoundedCornerShape(16.dp),
             modifier = Modifier.fillMaxWidth()
@@ -1104,7 +1052,7 @@ fun SettingsScreen(viewModel: MPlayerViewModel) {
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = "Player & Playback",
+                        text = "Playback Preferences",
                         fontWeight = FontWeight.Bold,
                         fontSize = 14.sp,
                         color = MaterialTheme.colorScheme.primary
@@ -1112,199 +1060,7 @@ fun SettingsScreen(viewModel: MPlayerViewModel) {
                 }
                 Spacer(modifier = Modifier.height(16.dp))
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text("Background Audio", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
-                        Text("Continue playing video audio stream when switching apps.", fontSize = 11.sp, color = Color.Gray)
-                    }
-                    Switch(checked = backgroundPlayback, onCheckedChange = { viewModel.updateBackgroundPlayback(it) })
-                }
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text("Swipe Gestures", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
-                        Text("Control brightness, volume, and seek by swiping on screen.", fontSize = 11.sp, color = Color.Gray)
-                    }
-                    Switch(checked = gestureSeeking, onCheckedChange = { viewModel.updateGestureSeeking(it) })
-                }
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text("Auto-play Next Video", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
-                        Text("Automatically play the next file in playlist queue.", fontSize = 11.sp, color = Color.Gray)
-                    }
-                    Switch(checked = autoPlayNext, onCheckedChange = { viewModel.updateAutoPlayNext(it) })
-                }
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                // Double tap seek selector
-                Column(modifier = Modifier.fillMaxWidth()) {
-                    Text("Double-tap Seek Jump", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
-                    Text("Select time interval to seek forward/backward.", fontSize = 11.sp, color = Color.Gray)
-                    Spacer(modifier = Modifier.height(10.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        listOf(5, 10, 15, 30).forEach { seconds ->
-                            val isSelected = doubleTapSeekSeconds == seconds
-                            OutlinedButton(
-                                onClick = { viewModel.updateDoubleTapSeekSeconds(seconds) },
-                                modifier = Modifier.weight(1f),
-                                shape = RoundedCornerShape(8.dp),
-                                colors = ButtonDefaults.outlinedButtonColors(
-                                    containerColor = if (isSelected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
-                                    contentColor = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
-                                ),
-                                contentPadding = PaddingValues(0.dp)
-                            ) {
-                                Text("${seconds}s", fontSize = 12.sp, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal)
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // CARD 3: SUBTITLE STYLING
-        Card(
-            shape = RoundedCornerShape(16.dp),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        imageVector = Icons.Default.Subtitles,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = "Subtitle Styling",
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 14.sp,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                }
-                Spacer(modifier = Modifier.height(16.dp))
-
-                // Text Scale Selector
-                Column(modifier = Modifier.fillMaxWidth()) {
-                    Text("Caption Text Size", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        listOf("Compact", "Default", "Large").forEach { scale ->
-                            val isSelected = subtitleTextScale == scale
-                            OutlinedButton(
-                                onClick = { viewModel.updateSubtitleTextScale(scale) },
-                                modifier = Modifier.weight(1f),
-                                shape = RoundedCornerShape(8.dp),
-                                colors = ButtonDefaults.outlinedButtonColors(
-                                    containerColor = if (isSelected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
-                                    contentColor = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
-                                ),
-                                contentPadding = PaddingValues(0.dp)
-                            ) {
-                                Text(scale, fontSize = 12.sp, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal)
-                            }
-                        }
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                // Color Selector
-                Column(modifier = Modifier.fillMaxWidth()) {
-                    Text("Caption Text Color", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        val colorsList = listOf(
-                            "White" to Color.White,
-                            "Yellow" to Color.Yellow,
-                            "Green" to Color.Green,
-                            "Cyan" to Color.Cyan
-                        )
-                        colorsList.forEach { (colorName, colorVal) ->
-                            val isSelected = subtitleColor == colorName
-                            Box(
-                                modifier = Modifier
-                                    .size(36.dp)
-                                    .clip(CircleShape)
-                                    .background(colorVal)
-                                    .clickable { viewModel.updateSubtitleColor(colorName) }
-                                    .border(
-                                        width = if (isSelected) 3.dp else 1.dp,
-                                        color = if (isSelected) MaterialTheme.colorScheme.primary else Color.Gray,
-                                        shape = CircleShape
-                                    )
-                            )
-                        }
-                    }
-                }
-            }
-        }
-
-        // CARD 4: DISPLAY PREFERENCES
-        Card(
-            shape = RoundedCornerShape(16.dp),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        imageVector = Icons.Default.Smartphone,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = "Display & Screen",
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 14.sp,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                }
-                Spacer(modifier = Modifier.height(16.dp))
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text("Auto-rotate Screen", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
-                        Text("Automatically switch player orientation to fit video aspect ratio.", fontSize = 11.sp, color = Color.Gray)
-                    }
-                    Switch(checked = autoRotate, onCheckedChange = { viewModel.updateAutoRotate(it) })
-                }
-
-                Spacer(modifier = Modifier.height(16.dp))
-
+                // Keep Screen Awake
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -1312,14 +1068,44 @@ fun SettingsScreen(viewModel: MPlayerViewModel) {
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
                         Text("Keep Screen Awake", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
-                        Text("Prevent device from turning off display while video is playing.", fontSize = 11.sp, color = Color.Gray)
+                        Text("Prevent display from sleeping during playback.", fontSize = 11.sp, color = Color.Gray)
                     }
-                    Switch(checked = keepScreenOn, onCheckedChange = { viewModel.updateKeepScreenOn(it) })
+                    Switch(checked = localKeepScreenOn, onCheckedChange = { localKeepScreenOn = it })
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // Swipe Gestures
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Swipe Gestures", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                        Text("Swipe for volume, brightness, and seeking.", fontSize = 11.sp, color = Color.Gray)
+                    }
+                    Switch(checked = localGestureSeeking, onCheckedChange = { localGestureSeeking = it })
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // Background Playback
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Background Audio", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                        Text("Continue playing audio when app is minimized.", fontSize = 11.sp, color = Color.Gray)
+                    }
+                    Switch(checked = localBackgroundPlayback, onCheckedChange = { localBackgroundPlayback = it })
                 }
             }
         }
 
-        // CARD 5: THEME ACCENTS
+        // CARD 2: APP THEME
         Card(
             shape = RoundedCornerShape(16.dp),
             modifier = Modifier.fillMaxWidth()
@@ -1334,7 +1120,7 @@ fun SettingsScreen(viewModel: MPlayerViewModel) {
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = "App Interface Customization",
+                        text = "Appearance Theme",
                         fontWeight = FontWeight.Bold,
                         fontSize = 14.sp,
                         color = MaterialTheme.colorScheme.primary
@@ -1343,9 +1129,9 @@ fun SettingsScreen(viewModel: MPlayerViewModel) {
                 Spacer(modifier = Modifier.height(16.dp))
 
                 Column(modifier = Modifier.fillMaxWidth()) {
-                    Text("Elegant Dark Accent Color", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
-                    Text("Select a color palette theme for buttons and cards.", fontSize = 11.sp, color = Color.Gray)
-                    Spacer(modifier = Modifier.height(10.dp))
+                    Text("Accent Color Theme", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                    Text("Choose a personal color palette accent.", fontSize = 11.sp, color = Color.Gray)
+                    Spacer(modifier = Modifier.height(12.dp))
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -1358,13 +1144,13 @@ fun SettingsScreen(viewModel: MPlayerViewModel) {
                             "Rose" to Color(0xFFFF8A80)
                         )
                         accentColors.forEach { (name, colorVal) ->
-                            val isSelected = selectedAccent == name
+                            val isSelected = localSelectedAccent == name
                             Box(
                                 modifier = Modifier
                                     .size(36.dp)
                                     .clip(CircleShape)
                                     .background(colorVal)
-                                    .clickable { viewModel.updateSelectedAccent(name) }
+                                    .clickable { localSelectedAccent = name }
                                     .border(
                                         width = if (isSelected) 3.dp else 1.dp,
                                         color = if (isSelected) Color.White else Color.Transparent,
@@ -1387,45 +1173,61 @@ fun SettingsScreen(viewModel: MPlayerViewModel) {
             }
         }
 
-        // UTILITIES BUTTONS
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        // SAVE BUTTON (NEW)
+        Button(
+            onClick = {
+                viewModel.updateKeepScreenOn(localKeepScreenOn)
+                viewModel.updateGestureSeeking(localGestureSeeking)
+                viewModel.updateBackgroundPlayback(localBackgroundPlayback)
+                viewModel.updateSelectedAccent(localSelectedAccent)
+                Toast.makeText(context, "Settings saved permanently!", Toast.LENGTH_SHORT).show()
+            },
+            modifier = Modifier.fillMaxWidth().testTag("save_settings_button"),
+            shape = RoundedCornerShape(12.dp),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = MaterialTheme.colorScheme.primary,
+                contentColor = MaterialTheme.colorScheme.onPrimary
+            )
         ) {
-            OutlinedButton(
-                onClick = {
-                    viewModel.updateHardwareDecoding(true)
-                    viewModel.updateAudioBoost(false)
-                    viewModel.updateBackgroundPlayback(false)
-                    viewModel.updateGestureSeeking(true)
-                    viewModel.updateAutoPlayNext(true)
-                    viewModel.updateDoubleTapSeekSeconds(10)
-                    viewModel.updateSubtitleTextScale("Default")
-                    viewModel.updateSubtitleColor("White")
-                    viewModel.updateAutoRotate(true)
-                    viewModel.updateKeepScreenOn(true)
-                    viewModel.updateSelectedAccent("Purple")
-                    Toast.makeText(context, "Preferences have been reset to factory defaults", Toast.LENGTH_SHORT).show()
-                },
-                modifier = Modifier.weight(1f),
-                shape = RoundedCornerShape(12.dp)
-            ) {
-                Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
-                Spacer(modifier = Modifier.width(6.dp))
-                Text("Reset All", fontSize = 12.sp)
-            }
+            Icon(Icons.Default.Save, contentDescription = null, modifier = Modifier.size(18.dp))
+            Spacer(modifier = Modifier.width(8.dp))
+            Text("Save Settings Permanently", fontSize = 14.sp, fontWeight = FontWeight.Bold)
+        }
 
-            Button(
-                onClick = {
-                    Toast.makeText(context, "M4 Player is up to date! (v1.0.0-Stable)", Toast.LENGTH_SHORT).show()
-                },
-                modifier = Modifier.weight(1f),
-                shape = RoundedCornerShape(12.dp)
-            ) {
-                Icon(Icons.Default.SystemUpdate, contentDescription = null, modifier = Modifier.size(16.dp))
-                Spacer(modifier = Modifier.width(6.dp))
-                Text("Check Update", fontSize = 12.sp)
-            }
+        // SYSTEM UTILITIES (RESET ONLY)
+        Button(
+            onClick = {
+                viewModel.updateKeepScreenOn(true)
+                viewModel.updateGestureSeeking(true)
+                viewModel.updateBackgroundPlayback(false)
+                viewModel.updateSelectedAccent("Purple")
+                // Reset hidden ones to safe defaults
+                viewModel.updateHardwareDecoding(true)
+                viewModel.updateAudioBoost(false)
+                viewModel.updateAutoPlayNext(true)
+                viewModel.updateDoubleTapSeekSeconds(10)
+                viewModel.updateSubtitleTextScale("Default")
+                viewModel.updateSubtitleColor("White")
+                viewModel.updateAutoRotate(true)
+
+                // Update local drafts
+                localKeepScreenOn = true
+                localGestureSeeking = true
+                localBackgroundPlayback = false
+                localSelectedAccent = "Purple"
+
+                Toast.makeText(context, "Preferences have been reset to defaults", Toast.LENGTH_SHORT).show()
+            },
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(12.dp),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = MaterialTheme.colorScheme.errorContainer,
+                contentColor = MaterialTheme.colorScheme.onErrorContainer
+            )
+        ) {
+            Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
+            Spacer(modifier = Modifier.width(6.dp))
+            Text("Reset Preferences to Default", fontSize = 13.sp)
         }
 
         // ABOUT CARD
@@ -1443,14 +1245,14 @@ fun SettingsScreen(viewModel: MPlayerViewModel) {
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = "App & About",
+                        text = "About Player",
                         fontWeight = FontWeight.Bold,
                         fontSize = 14.sp,
                         color = MaterialTheme.colorScheme.primary
                     )
                 }
                 Spacer(modifier = Modifier.height(12.dp))
-                Text("M4 Player Premium Video Player v1.0.0", fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                Text("M4 Player Premium", fontSize = 13.sp, fontWeight = FontWeight.Bold)
                 Spacer(modifier = Modifier.height(4.dp))
                 Text("Engine: Jetpack Media3 (ExoPlayer)", fontSize = 12.sp, color = Color.Gray)
                 Text("Build target: Android SDK API 36", fontSize = 12.sp, color = Color.Gray)

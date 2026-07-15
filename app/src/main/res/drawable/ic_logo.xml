@@ -14,7 +14,7 @@
         android:fillColor="#FFFFFF"
         android:pathData="M 32,41 h 6.5 l 4.5,8.5 l 4.5,-8.5 h 6.5 v 18 h -5.5 v -11.5 l -4.5,8.5 h -2 l -4.5,-8.5 v 11.5 h -5.5 z" />
 
-    <!-- Bold block "4" path -->
+    <!-- Bold block "4" path (composed of stem, crossbar, and diagonal leg) -->
     <path
         android:fillColor="#FFFFFF"
         android:pathData="M 64.5,41 h 5.5 v 10 H 86 v 4 H 70 v 4 h -5.5 v -4 H 54 v -4 L 64.5,41 z M 64.5,51 v -5.5 L 59,51 h 5.5 z" />
