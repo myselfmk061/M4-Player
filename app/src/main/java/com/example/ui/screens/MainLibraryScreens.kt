@@ -1262,6 +1262,13 @@ fun SettingsScreen(viewModel: MPlayerViewModel) {
                     fontSize = 11.sp,
                     color = Color.Gray
                 )
+                Spacer(modifier = Modifier.height(12.dp))
+                Text(
+                    text = "Made by MyselfmkApps made with ❤️",
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = MaterialTheme.colorScheme.primary
+                )
             }
         }
     }

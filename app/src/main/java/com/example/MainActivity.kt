@@ -540,6 +540,13 @@ fun SplashScreen() {
                 letterSpacing = 1.5.sp,
                 color = Color.White.copy(alpha = 0.4f)
             )
+            Spacer(modifier = Modifier.height(6.dp))
+            Text(
+                text = "Made by MyselfmkApps made with ❤️",
+                fontWeight = FontWeight.Medium,
+                fontSize = 11.sp,
+                color = Color.White.copy(alpha = 0.7f)
+            )
         }
     }
 }

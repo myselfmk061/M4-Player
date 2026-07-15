@@ -88,7 +88,7 @@ fun PlayerScreen(
     // Read preferences from ViewModel
     val autoRotate by viewModel.autoRotate.collectAsState()
     val keepScreenOn by viewModel.keepScreenOn.collectAsState()
-    
+
     // Auto-rotate landscape on player open depending on preference
     DisposableEffect(autoRotate, keepScreenOn) {
         if (autoRotate) {
@@ -108,7 +108,7 @@ fun PlayerScreen(
         }
     }
 
-    val videoUri = remember {
+    val videoUri = remember(videoItem, networkUrl) {
         when {
             videoItem != null -> {
                 if (videoItem.path.startsWith("content://") || videoItem.path.startsWith("file://")) {
@@ -134,23 +134,29 @@ fun PlayerScreen(
         return
     }
 
-    val exoPlayer = remember(context) {
-        ExoPlayer.Builder(context).build().apply {
-            val mediaItem = MediaItem.Builder()
-                .setUri(videoUri)
-                .build()
-            setMediaItem(mediaItem)
-            prepare()
-            playWhenReady = true
-        }
+    val exoPlayer = remember {
+        ExoPlayer.Builder(context).build()
     }
 
-    // Set initial position if any
-    LaunchedEffect(videoItem) {
+    // Prepare and setup player when videoUri changes
+    LaunchedEffect(videoUri) {
+        val mediaItem = MediaItem.Builder()
+            .setUri(videoUri)
+            .build()
+        exoPlayer.setMediaItem(mediaItem)
+        exoPlayer.prepare()
+        exoPlayer.playWhenReady = true
         videoItem?.let {
             if (it.lastPosition > 0) {
                 exoPlayer.seekTo(it.lastPosition)
             }
+        }
+    }
+
+    // Release player on disposal of PlayerScreen
+    DisposableEffect(Unit) {
+        onDispose {
+            exoPlayer.release()
         }
     }
 
@@ -159,8 +165,6 @@ fun PlayerScreen(
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_PAUSE) {
                 exoPlayer.pause()
-            } else if (event == Lifecycle.Event.ON_DESTROY) {
-                exoPlayer.release()
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -175,7 +179,6 @@ fun PlayerScreen(
         title = videoItem?.title ?: networkUrl?.substringAfterLast('/') ?: "Streaming Video",
         onBack = {
             val lastPos = exoPlayer.currentPosition
-            exoPlayer.release()
             onBack(lastPos)
         },
         activity = activity,
@@ -185,7 +188,6 @@ fun PlayerScreen(
     // Hardware back press handler
     BackHandler {
         val lastPos = exoPlayer.currentPosition
-        exoPlayer.release()
         onBack(lastPos)
     }
 }
@@ -205,10 +207,13 @@ private fun PlayerContent(
     var isLocked by remember { mutableStateOf(false) }
 
     // Read preferences from ViewModel
+    val autoRotate by viewModel.autoRotate.collectAsState()
     val gestureSeeking by viewModel.gestureSeeking.collectAsState()
     val doubleTapSeekSeconds by viewModel.doubleTapSeekSeconds.collectAsState()
     val subtitleTextScale by viewModel.subtitleTextScale.collectAsState()
     val subtitleColor by viewModel.subtitleColor.collectAsState()
+
+    var isLandscape by remember { mutableStateOf(autoRotate) }
 
     // Subtitles State
     var subtitlesEnabled by remember { mutableStateOf(false) }
@@ -247,6 +252,8 @@ private fun PlayerContent(
     var duration by remember { mutableStateOf(player.duration) }
     var playbackSpeed by remember { mutableStateOf(1f) }
     var aspectRatio by remember { mutableStateOf(VideoAspectRatio.FIT) }
+    var isBuffering by remember { mutableStateOf(false) }
+    var playbackError by remember { mutableStateOf<String?>(null) }
 
     // Gestures overlay states
     var brightnessOverlayValue by remember { mutableStateOf<Float?>(null) }
@@ -278,6 +285,13 @@ private fun PlayerContent(
             }
             override fun onPlaybackStateChanged(state: Int) {
                 duration = player.duration
+                isBuffering = (state == Player.STATE_BUFFERING)
+                if (state == Player.STATE_READY) {
+                    playbackError = null
+                }
+            }
+            override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
+                playbackError = error.localizedMessage ?: "Playback error or unsupported format"
             }
         }
         player.addListener(listener)
@@ -406,8 +420,26 @@ private fun PlayerContent(
                 }
                 .pointerInput(isLocked, gestureSeeking) {
                     if (!isLocked && gestureSeeking) {
+                        var dragTotalX = 0f
+                        var dragTotalY = 0f
+                        var dragStartPosition = 0L
+                        var dragStartVolume = 0
+                        var dragStartBrightness = 0.5f
+                        var dragType: String? = null
+
                         detectDragGestures(
-                            onDragStart = { },
+                            onDragStart = { offset ->
+                                dragTotalX = 0f
+                                dragTotalY = 0f
+                                dragType = null
+                                dragStartPosition = player.currentPosition
+                                dragStartVolume = audioManager?.getStreamVolume(AudioManager.STREAM_MUSIC) ?: 0
+                                activity?.let { act ->
+                                    var screenBrightness = act.window.attributes.screenBrightness
+                                    if (screenBrightness < 0) screenBrightness = 0.5f
+                                    dragStartBrightness = screenBrightness
+                                }
+                            },
                             onDragEnd = {
                                 brightnessOverlayValue = null
                                 volumeOverlayValue = null
@@ -420,37 +452,43 @@ private fun PlayerContent(
                             },
                             onDrag = { change, dragAmount ->
                                 change.consume()
+                                dragTotalX += dragAmount.x
+                                dragTotalY += dragAmount.y
                                 val viewWidth = size.width
                                 val viewHeight = size.height
                                 val currentX = change.position.x
 
-                                if (abs(dragAmount.x) > abs(dragAmount.y) * 1.5f) {
-                                    // Horizontal Swipe: Seek
-                                    val factor = dragAmount.x / viewWidth.toFloat()
-                                    val seekOffset = (factor * 90000L).toLong() // Seek scale
-                                    val newPosition = (player.currentPosition + seekOffset).coerceIn(0, player.duration)
-                                    player.seekTo(newPosition)
-                                    seekProgressOverlayValue = formatTime(newPosition)
-                                } else {
-                                    // Vertical Swipe
-                                    if (currentX < viewWidth / 2f) {
-                                        // Left Side: Brightness
+                                if (dragType == null && (abs(dragTotalX) > 20 || abs(dragTotalY) > 20)) {
+                                    dragType = if (abs(dragTotalX) > abs(dragTotalY) * 1.5f) {
+                                        "seek"
+                                    } else if (currentX < viewWidth / 2f) {
+                                        "brightness"
+                                    } else {
+                                        "volume"
+                                    }
+                                }
+
+                                when (dragType) {
+                                    "seek" -> {
+                                        val factor = dragTotalX / viewWidth.toFloat()
+                                        val seekOffset = (factor * 120000L).toLong() // 120s across screen width
+                                        val newPosition = (dragStartPosition + seekOffset).coerceIn(0, player.duration)
+                                        player.seekTo(newPosition)
+                                        seekProgressOverlayValue = formatTime(newPosition)
+                                    }
+                                    "brightness" -> {
                                         activity?.let { act ->
                                             val lp = act.window.attributes
-                                            var screenBrightness = lp.screenBrightness
-                                            if (screenBrightness < 0) screenBrightness = 0.5f // Default fallback
-                                            
-                                            val newBrightness = (screenBrightness - (dragAmount.y / viewHeight.toFloat())).coerceIn(0.01f, 1.0f)
+                                            val newBrightness = (dragStartBrightness - (dragTotalY / viewHeight.toFloat())).coerceIn(0.01f, 1.0f)
                                             lp.screenBrightness = newBrightness
                                             act.window.attributes = lp
                                             brightnessOverlayValue = newBrightness
                                         }
-                                    } else {
-                                        // Right Side: Volume
+                                    }
+                                    "volume" -> {
                                         audioManager?.let { am ->
-                                            val currentVol = am.getStreamVolume(AudioManager.STREAM_MUSIC)
-                                            val volumeDelta = -(dragAmount.y / viewHeight.toFloat() * maxVolume).toInt()
-                                            val newVolume = (currentVol + volumeDelta).coerceIn(0, maxVolume)
+                                            val volumeDelta = -(dragTotalY / viewHeight.toFloat() * maxVolume).toInt()
+                                            val newVolume = (dragStartVolume + volumeDelta).coerceIn(0, maxVolume)
                                             am.setStreamVolume(AudioManager.STREAM_MUSIC, newVolume, 0)
                                             volumeOverlayValue = newVolume
                                         }
@@ -461,6 +499,77 @@ private fun PlayerContent(
                     }
                 }
         )
+
+        // Buffering Indicator
+        if (isBuffering && playbackError == null) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.3f)),
+                contentAlignment = Alignment.Center
+            ) {
+                CircularProgressIndicator(
+                    color = Color(0xFF22D3EE),
+                    modifier = Modifier.size(50.dp)
+                )
+            }
+        }
+
+        // Playback Error Overlay
+        playbackError?.let { errorMsg ->
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.85f))
+                    .padding(24.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Card(
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = Color(0xFF1E1B29)
+                    ),
+                    modifier = Modifier.widthIn(max = 400.dp)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(24.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Warning,
+                            contentDescription = "Error",
+                            tint = Color(0xFFEF4444),
+                            modifier = Modifier.size(48.dp)
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Text(
+                            text = "Playback Failed",
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White,
+                            fontSize = 18.sp
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = errorMsg,
+                            color = Color(0xFF94A3B8),
+                            fontSize = 13.sp,
+                            textAlign = TextAlign.Center
+                        )
+                        Spacer(modifier = Modifier.height(24.dp))
+                        Button(
+                            onClick = onBack,
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = Color(0xFFEF4444)
+                            ),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Text("Go Back", color = Color.White)
+                        }
+                    }
+                }
+            }
+        }
 
         // Custom Beautiful Controls
         AnimatedVisibility(
@@ -553,6 +662,22 @@ private fun PlayerContent(
                                         overflow = TextOverflow.Ellipsis,
                                         modifier = Modifier.weight(1f)
                                     )
+
+                                    // Rotation Button
+                                    IconButton(onClick = {
+                                        isLandscape = !isLandscape
+                                        if (isLandscape) {
+                                            activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+                                        } else {
+                                            activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
+                                        }
+                                    }) {
+                                        Icon(
+                                            if (isLandscape) Icons.Outlined.ScreenRotation else Icons.Outlined.ScreenLockPortrait,
+                                            "Rotate Screen",
+                                            tint = Color.White
+                                        )
+                                    }
 
                                     // PiP Support Button (Android 8.0+)
                                     IconButton(onClick = {
