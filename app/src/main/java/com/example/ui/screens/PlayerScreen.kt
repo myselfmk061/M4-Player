@@ -183,9 +183,9 @@ private fun PlayerContent(
     var isLocked by remember { mutableStateOf(false) }
 
     // Subtitles State
-    var subtitlesEnabled by remember { mutableStateOf(true) }
-    var subtitles by remember { mutableStateOf<List<SubtitleCue>>(getSampleSubtitles()) }
-    var subtitleFileName by remember { mutableStateOf<String?>("Sample Subtitles") }
+    var subtitlesEnabled by remember { mutableStateOf(false) }
+    var subtitles by remember { mutableStateOf<List<SubtitleCue>>(emptyList()) }
+    var subtitleFileName by remember { mutableStateOf<String?>(null) }
 
     // Subtitle file picker launcher
     val subtitlePickerLauncher = rememberLauncherForActivityResult(
@@ -823,7 +823,7 @@ private fun PlayerContent(
             text = {
                 Column(modifier = Modifier.fillMaxWidth()) {
                     Text(
-                        text = "Customize your subtitles and audio tracks. Load any local .srt file or use the built-in demo captions.",
+                        text = "Customize your subtitles. Load any local .srt file from your device to display synchronized captions during playback.",
                         fontSize = 14.sp,
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f)
                     )
@@ -890,23 +890,8 @@ private fun PlayerContent(
                         Text("Load Custom .SRT File")
                     }
 
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        OutlinedButton(
-                            onClick = {
-                                subtitles = getSampleSubtitles()
-                                subtitleFileName = "Sample Subtitles"
-                                subtitlesEnabled = true
-                                Toast.makeText(context, "Loaded sample subtitles!", Toast.LENGTH_SHORT).show()
-                            },
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Text("Load Demo")
-                        }
+                    if (subtitles.isNotEmpty()) {
+                        Spacer(modifier = Modifier.height(8.dp))
 
                         OutlinedButton(
                             onClick = {
@@ -915,12 +900,14 @@ private fun PlayerContent(
                                 subtitlesEnabled = false
                                 Toast.makeText(context, "Cleared subtitles", Toast.LENGTH_SHORT).show()
                             },
-                            modifier = Modifier.weight(1f),
+                            modifier = Modifier.fillMaxWidth(),
                             colors = ButtonDefaults.outlinedButtonColors(
                                 contentColor = MaterialTheme.colorScheme.error
                             )
                         ) {
-                            Text("Clear")
+                            Icon(Icons.Default.DeleteOutline, contentDescription = null)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Clear Subtitles")
                         }
                     }
                 }
