@@ -66,7 +66,8 @@ class MainActivity : ComponentActivity() {
         }
 
         setContent {
-            MyApplicationTheme {
+            val accent by viewModel.selectedAccent.collectAsState()
+            MyApplicationTheme(accent = accent) {
                 MainAppContent(viewModel = viewModel)
             }
         }
@@ -126,6 +127,7 @@ fun MainAppContent(viewModel: MPlayerViewModel) {
             PlayerScreen(
                 videoItem = activeVideoItem,
                 networkUrl = activeNetworkUrl,
+                viewModel = viewModel,
                 onBack = { lastPosition ->
                     // Save playback progress back to History Room table
                     activeVideoItem?.let { video ->
@@ -310,6 +312,7 @@ fun MainAppContent(viewModel: MPlayerViewModel) {
 
                         NavigationTab.STREAM -> {
                             NetworkScreen(
+                                viewModel = viewModel,
                                 onStreamClick = { url -> activeNetworkUrl = url }
                             )
                         }
@@ -322,7 +325,7 @@ fun MainAppContent(viewModel: MPlayerViewModel) {
                         }
 
                         NavigationTab.SETTINGS -> {
-                            SettingsScreen()
+                            SettingsScreen(viewModel = viewModel)
                         }
                     }
                 }

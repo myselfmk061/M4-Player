@@ -29,6 +29,8 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -41,6 +43,7 @@ import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -54,7 +57,10 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
+import androidx.media3.ui.CaptionStyleCompat
+import androidx.media3.ui.SubtitleView
 import com.example.models.VideoItem
+import com.example.viewmodels.MPlayerViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -72,16 +78,29 @@ enum class VideoAspectRatio(val label: String, val mode: Int) {
 fun PlayerScreen(
     videoItem: VideoItem?,
     networkUrl: String?,
+    viewModel: MPlayerViewModel,
     onBack: (lastPosition: Long) -> Unit
 ) {
     val context = LocalContext.current
     val activity = remember(context) { context.findActivity() }
+
+    // Read preferences from ViewModel
+    val autoRotate by viewModel.autoRotate.collectAsState()
+    val keepScreenOn by viewModel.keepScreenOn.collectAsState()
     
-    // Auto-rotate landscape on player open
-    DisposableEffect(Unit) {
-        activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
-        // Keep screen on
-        activity?.window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+    // Auto-rotate landscape on player open depending on preference
+    DisposableEffect(autoRotate, keepScreenOn) {
+        if (autoRotate) {
+            activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+        } else {
+            activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+        }
+        // Keep screen on depending on preference
+        if (keepScreenOn) {
+            activity?.window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        } else {
+            activity?.window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        }
         onDispose {
             activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
             activity?.window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
@@ -158,7 +177,8 @@ fun PlayerScreen(
             exoPlayer.release()
             onBack(lastPos)
         },
-        activity = activity
+        activity = activity,
+        viewModel = viewModel
     )
 
     // Hardware back press handler
@@ -175,12 +195,19 @@ private fun PlayerContent(
     player: ExoPlayer,
     title: String,
     onBack: () -> Unit,
-    activity: Activity?
+    activity: Activity?,
+    viewModel: MPlayerViewModel
 ) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     var isControlsVisible by remember { mutableStateOf(true) }
     var isLocked by remember { mutableStateOf(false) }
+
+    // Read preferences from ViewModel
+    val gestureSeeking by viewModel.gestureSeeking.collectAsState()
+    val doubleTapSeekSeconds by viewModel.doubleTapSeekSeconds.collectAsState()
+    val subtitleTextScale by viewModel.subtitleTextScale.collectAsState()
+    val subtitleColor by viewModel.subtitleColor.collectAsState()
 
     // Subtitles State
     var subtitlesEnabled by remember { mutableStateOf(false) }
@@ -297,6 +324,30 @@ private fun PlayerContent(
             },
             update = { view ->
                 view.resizeMode = aspectRatio.mode
+                view.subtitleView?.let { subtitleView ->
+                    val sizeScale = when (subtitleTextScale) {
+                        "Compact" -> 0.75f
+                        "Large" -> 1.5f
+                        else -> 1.0f
+                    }
+                    subtitleView.setFractionalTextSize(SubtitleView.DEFAULT_TEXT_SIZE_FRACTION * sizeScale)
+                    
+                    val textColor = when (subtitleColor) {
+                        "Yellow" -> android.graphics.Color.YELLOW
+                        "Green" -> android.graphics.Color.GREEN
+                        "Cyan" -> android.graphics.Color.CYAN
+                        else -> android.graphics.Color.WHITE
+                    }
+                    val style = CaptionStyleCompat(
+                        textColor,
+                        android.graphics.Color.TRANSPARENT,
+                        android.graphics.Color.TRANSPARENT,
+                        CaptionStyleCompat.EDGE_TYPE_OUTLINE,
+                        android.graphics.Color.BLACK,
+                        null
+                    )
+                    subtitleView.setStyle(style)
+                }
             },
             modifier = Modifier
                 .fillMaxSize()
@@ -310,20 +361,21 @@ private fun PlayerContent(
                             onDoubleTap = { offset ->
                                 val viewWidth = size.width
                                 val tapX = offset.x
+                                val seekMs = doubleTapSeekSeconds * 1000L
                                 if (tapX < viewWidth * 0.35f) {
-                                    // Double-tap left: Seek backward 10s
-                                    val newPos = (player.currentPosition - 10000).coerceAtLeast(0)
+                                    // Double-tap left: Seek backward
+                                    val newPos = (player.currentPosition - seekMs).coerceAtLeast(0)
                                     player.seekTo(newPos)
-                                    seekProgressOverlayValue = "-10s"
+                                    seekProgressOverlayValue = "-${doubleTapSeekSeconds}s"
                                     coroutineScope.launch {
                                         delay(800)
                                         seekProgressOverlayValue = null
                                     }
                                 } else if (tapX > viewWidth * 0.65f) {
-                                    // Double-tap right: Seek forward 10s
-                                    val newPos = (player.currentPosition + 10000).coerceAtMost(player.duration)
+                                    // Double-tap right: Seek forward
+                                    val newPos = (player.currentPosition + seekMs).coerceAtMost(player.duration)
                                     player.seekTo(newPos)
-                                    seekProgressOverlayValue = "+10s"
+                                    seekProgressOverlayValue = "+${doubleTapSeekSeconds}s"
                                     coroutineScope.launch {
                                         delay(800)
                                         seekProgressOverlayValue = null
@@ -351,8 +403,8 @@ private fun PlayerContent(
                         )
                     }
                 }
-                .pointerInput(isLocked) {
-                    if (!isLocked) {
+                .pointerInput(isLocked, gestureSeeking) {
+                    if (!isLocked && gestureSeeking) {
                         detectDragGestures(
                             onDragStart = { },
                             onDragEnd = {
@@ -455,279 +507,271 @@ private fun PlayerContent(
                         }
                     }
                 } else {
-                    // Full controls overlay
-                    Column(modifier = Modifier.fillMaxSize()) {
-                        // Header Toolbar
-                        Row(
+                    // Full controls overlay centered and consolidated at the bottom
+                    Column(
+                        modifier = Modifier.fillMaxSize(),
+                        verticalArrangement = Arrangement.Bottom
+                    ) {
+                        Card(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 16.dp, vertical = 12.dp),
-                            verticalAlignment = Alignment.CenterVertically
+                                .padding(16.dp)
+                                .navigationBarsPadding(),
+                            shape = RoundedCornerShape(20.dp),
+                            colors = CardDefaults.cardColors(
+                                containerColor = Color.Black.copy(alpha = 0.8f)
+                            ),
+                            elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
                         ) {
-                            IconButton(
-                                onClick = onBack,
-                                modifier = Modifier.testTag("player_back_button")
-                            ) {
-                                Icon(Icons.Default.ArrowBack, "Back", tint = Color.White)
-                            }
-
-                            Spacer(modifier = Modifier.width(8.dp))
-
-                            Text(
-                                text = title,
-                                color = Color.White,
-                                fontSize = 16.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                maxLines = 1,
-                                modifier = Modifier.weight(1f)
-                            )
-
-                            // PiP Support Button (Android 8.0+)
-                            IconButton(onClick = {
-                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                                    activity?.enterPictureInPictureMode()
-                                }
-                            }) {
-                                Icon(Icons.Outlined.PictureInPicture, "PiP", tint = Color.White)
-                            }
-
-                            // Sleep Timer Button
-                            IconButton(onClick = {
-                                val current = sleepTimerMinutesRemaining
-                                if (current == null) {
-                                    sleepTimerMinutesRemaining = 15
-                                    sleepTimerJob = coroutineScope.launch {
-                                        var rem = 15
-                                        while (rem > 0) {
-                                            delay(60000)
-                                            rem--
-                                            sleepTimerMinutesRemaining = rem
-                                        }
-                                        player.pause()
-                                        sleepTimerMinutesRemaining = null
-                                    }
-                                } else if (current == 15) {
-                                    sleepTimerMinutesRemaining = 30
-                                    sleepTimerJob?.cancel()
-                                    sleepTimerJob = coroutineScope.launch {
-                                        var rem = 30
-                                        while (rem > 0) {
-                                            delay(60000)
-                                            rem--
-                                            sleepTimerMinutesRemaining = rem
-                                        }
-                                        player.pause()
-                                        sleepTimerMinutesRemaining = null
-                                    }
-                                } else {
-                                    sleepTimerJob?.cancel()
-                                    sleepTimerMinutesRemaining = null
-                                }
-                            }) {
-                                BadgedBox(
-                                    badge = {
-                                        sleepTimerMinutesRemaining?.let { min ->
-                                            Badge { Text("${min}m", color = Color.White, fontSize = 9.sp) }
-                                        }
-                                    }
-                                ) {
-                                    Icon(Icons.Outlined.Snooze, "Sleep Timer", tint = Color.White)
-                                }
-                            }
-
-                            // Track selections (Audio & Subtitles)
-                            IconButton(onClick = { showTrackSelectionDialog = true }) {
-                                Icon(Icons.Outlined.Subtitles, "Audio/Subtitles", tint = Color.White)
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.weight(1f))
-
-                        // Center row controls
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.Center,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            // Lock button
-                            IconButton(
-                                onClick = {
-                                    isLocked = true
-                                    isControlsVisible = true
-                                },
-                                modifier = Modifier
-                                    .background(Color.Black.copy(alpha = 0.4f), CircleShape)
-                                    .size(44.dp)
-                            ) {
-                                Icon(Icons.Default.Lock, "Lock Screen", tint = Color.White, modifier = Modifier.size(20.dp))
-                            }
-
-                            Spacer(modifier = Modifier.width(32.dp))
-
-                            // Seek Backward
-                            IconButton(
-                                onClick = {
-                                    val newPos = (player.currentPosition - 10000).coerceAtLeast(0)
-                                    player.seekTo(newPos)
-                                },
-                                modifier = Modifier.size(48.dp)
-                            ) {
-                                Icon(Icons.Default.Replay10, "Rewind 10s", tint = Color.White, modifier = Modifier.size(36.dp))
-                            }
-
-                            Spacer(modifier = Modifier.width(24.dp))
-
-                            // Play Pause Pulsing Icon
-                            Box(
-                                modifier = Modifier
-                                    .background(Color.White.copy(alpha = 0.15f), CircleShape)
-                                    .padding(8.dp)
-                                    .clip(CircleShape)
-                                    .background(Color.White, CircleShape)
-                                    .clickable {
-                                        if (isPlaying) player.pause() else player.play()
-                                    }
-                                    .size(56.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    imageVector = if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                                    contentDescription = "Play/Pause",
-                                    tint = Color.Black,
-                                    modifier = Modifier.size(36.dp)
-                                )
-                            }
-
-                            Spacer(modifier = Modifier.width(24.dp))
-
-                            // Seek Forward
-                            IconButton(
-                                onClick = {
-                                    val newPos = (player.currentPosition + 10000).coerceAtMost(player.duration)
-                                    player.seekTo(newPos)
-                                },
-                                modifier = Modifier.size(48.dp)
-                            ) {
-                                Icon(Icons.Default.Forward10, "Forward 10s", tint = Color.White, modifier = Modifier.size(36.dp))
-                            }
-
-                            Spacer(modifier = Modifier.width(32.dp))
-
-                            // Aspect Ratio cycling
-                            IconButton(
-                                onClick = {
-                                    aspectRatio = when (aspectRatio) {
-                                        VideoAspectRatio.FIT -> VideoAspectRatio.FILL
-                                        VideoAspectRatio.FILL -> VideoAspectRatio.STRETCH
-                                        VideoAspectRatio.STRETCH -> VideoAspectRatio.FIT
-                                    }
-                                },
-                                modifier = Modifier
-                                    .background(Color.Black.copy(alpha = 0.4f), CircleShape)
-                                    .size(44.dp)
-                            ) {
-                                Icon(
-                                    imageVector = when (aspectRatio) {
-                                        VideoAspectRatio.FIT -> Icons.Outlined.AspectRatio
-                                        VideoAspectRatio.FILL -> Icons.Default.CropFree
-                                        VideoAspectRatio.STRETCH -> Icons.Default.FitScreen
-                                    },
-                                    contentDescription = "Aspect Ratio",
-                                    tint = Color.White,
-                                    modifier = Modifier.size(20.dp)
-                                )
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.weight(1f))
-
-                        // Bottom Toolbar Seekbar and Track Controls
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 24.dp, vertical = 12.dp)
-                        ) {
-                            // Slider / Timeline
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = formatTime(currentPosition),
-                                    color = Color.White,
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Medium
-                                )
-
-                                Slider(
-                                    value = if (duration > 0) currentPosition.toFloat() else 0f,
-                                    onValueChange = { player.seekTo(it.toLong()) },
-                                    valueRange = 0f..(if (duration > 0) duration.toFloat() else 1f),
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .padding(horizontal = 12.dp)
-                                        .testTag("playback_seekbar"),
-                                    colors = SliderDefaults.colors(
-                                        thumbColor = Color(0xFF38BDF8),
-                                        activeTrackColor = Color(0xFF38BDF8),
-                                        inactiveTrackColor = Color.White.copy(alpha = 0.3f)
-                                    )
-                                )
-
-                                Text(
-                                    text = formatTime(duration),
-                                    color = Color.White,
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Medium
-                                )
-                            }
-
-                            // Playback Speed controls row
-                            Row(
+                            Column(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(top = 4.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
+                                    .padding(16.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
                             ) {
+                                // 1. Title and Action Row
                                 Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    modifier = Modifier
-                                        .background(Color.White.copy(alpha = 0.1f), RoundedCornerShape(12.dp))
-                                        .clickable {
-                                            val speed = when (playbackSpeed) {
-                                                0.5f -> 1.0f
-                                                1.0f -> 1.5f
-                                                1.5f -> 2.0f
-                                                2.0f -> 3.0f
-                                                3.0f -> 0.5f
-                                                else -> 1.0f
-                                            }
-                                            player.setPlaybackSpeed(speed)
-                                            playbackSpeed = speed
-                                        }
-                                        .padding(horizontal = 12.dp, vertical = 6.dp)
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Icon(
-                                        Icons.Outlined.Speed,
-                                        "Speed",
-                                        tint = Color.White,
-                                        modifier = Modifier.size(16.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(6.dp))
+                                    IconButton(
+                                        onClick = onBack,
+                                        modifier = Modifier.testTag("player_back_button")
+                                    ) {
+                                        Icon(Icons.Default.ArrowBack, "Back", tint = Color.White)
+                                    }
+
+                                    Spacer(modifier = Modifier.width(8.dp))
+
                                     Text(
-                                        text = "${playbackSpeed}x Speed",
+                                        text = title,
                                         color = Color.White,
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.SemiBold
+                                        fontSize = 15.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.weight(1f)
+                                    )
+
+                                    // PiP Support Button (Android 8.0+)
+                                    IconButton(onClick = {
+                                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                                            activity?.enterPictureInPictureMode()
+                                        }
+                                    }) {
+                                        Icon(Icons.Outlined.PictureInPicture, "PiP", tint = Color.White)
+                                    }
+
+                                    // Sleep Timer Button
+                                    IconButton(onClick = {
+                                        val current = sleepTimerMinutesRemaining
+                                        if (current == null) {
+                                            sleepTimerMinutesRemaining = 15
+                                            sleepTimerJob = coroutineScope.launch {
+                                                var rem = 15
+                                                while (rem > 0) {
+                                                    delay(60000)
+                                                    rem--
+                                                    sleepTimerMinutesRemaining = rem
+                                                }
+                                                player.pause()
+                                                sleepTimerMinutesRemaining = null
+                                            }
+                                        } else if (current == 15) {
+                                            sleepTimerMinutesRemaining = 30
+                                            sleepTimerJob?.cancel()
+                                            sleepTimerJob = coroutineScope.launch {
+                                                var rem = 30
+                                                while (rem > 0) {
+                                                    delay(60000)
+                                                    rem--
+                                                    sleepTimerMinutesRemaining = rem
+                                                }
+                                                player.pause()
+                                                sleepTimerMinutesRemaining = null
+                                            }
+                                        } else {
+                                            sleepTimerJob?.cancel()
+                                            sleepTimerMinutesRemaining = null
+                                        }
+                                    }) {
+                                        BadgedBox(
+                                            badge = {
+                                                sleepTimerMinutesRemaining?.let { min ->
+                                                    Badge { Text("${min}m", color = Color.White, fontSize = 9.sp) }
+                                                }
+                                            }
+                                        ) {
+                                            Icon(Icons.Outlined.Snooze, "Sleep Timer", tint = Color.White)
+                                        }
+                                    }
+
+                                    // Track selections (Audio & Subtitles)
+                                    IconButton(onClick = { showTrackSelectionDialog = true }) {
+                                        Icon(Icons.Outlined.Subtitles, "Audio/Subtitles", tint = Color.White)
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.height(8.dp))
+
+                                // 2. Slider / Timeline Row
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = formatTime(currentPosition),
+                                        color = Color.White,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Medium
+                                    )
+
+                                    Slider(
+                                        value = if (duration > 0) currentPosition.toFloat() else 0f,
+                                        onValueChange = { player.seekTo(it.toLong()) },
+                                        valueRange = 0f..(if (duration > 0) duration.toFloat() else 1f),
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .padding(horizontal = 8.dp)
+                                            .testTag("playback_seekbar"),
+                                        colors = SliderDefaults.colors(
+                                            thumbColor = Color(0xFF38BDF8),
+                                            activeTrackColor = Color(0xFF38BDF8),
+                                            inactiveTrackColor = Color.White.copy(alpha = 0.3f)
+                                        )
+                                    )
+
+                                    Text(
+                                        text = formatTime(duration),
+                                        color = Color.White,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Medium
                                     )
                                 }
 
-                                Text(
-                                    text = "Aspect: ${aspectRatio.label}",
-                                    color = Color.White.copy(alpha = 0.8f),
-                                    fontSize = 12.sp
-                                )
+                                Spacer(modifier = Modifier.height(8.dp))
+
+                                // 3. Primary Playback Buttons Row
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    // Playback Speed controls
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier
+                                            .background(Color.White.copy(alpha = 0.15f), RoundedCornerShape(12.dp))
+                                            .clickable {
+                                                val speed = when (playbackSpeed) {
+                                                    0.5f -> 1.0f
+                                                    1.0f -> 1.5f
+                                                    1.5f -> 2.0f
+                                                    2.0f -> 3.0f
+                                                    3.0f -> 0.5f
+                                                    else -> 1.0f
+                                                }
+                                                player.setPlaybackSpeed(speed)
+                                                playbackSpeed = speed
+                                            }
+                                            .padding(horizontal = 10.dp, vertical = 6.dp)
+                                    ) {
+                                        Icon(
+                                            Icons.Outlined.Speed,
+                                            "Speed",
+                                            tint = Color.White,
+                                            modifier = Modifier.size(14.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text(
+                                            text = "${playbackSpeed}x",
+                                            color = Color.White,
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.SemiBold
+                                        )
+                                    }
+
+                                    // Lock button
+                                    IconButton(
+                                        onClick = {
+                                            isLocked = true
+                                            isControlsVisible = true
+                                        },
+                                        modifier = Modifier
+                                            .background(Color.White.copy(alpha = 0.1f), CircleShape)
+                                            .size(36.dp)
+                                    ) {
+                                        Icon(Icons.Default.Lock, "Lock Screen", tint = Color.White, modifier = Modifier.size(16.dp))
+                                    }
+
+                                    // Seek Backward
+                                    IconButton(
+                                        onClick = {
+                                            val newPos = (player.currentPosition - 10000).coerceAtLeast(0)
+                                            player.seekTo(newPos)
+                                        },
+                                        modifier = Modifier.size(40.dp)
+                                    ) {
+                                        Icon(Icons.Default.Replay10, "Rewind 10s", tint = Color.White, modifier = Modifier.size(28.dp))
+                                    }
+
+                                    // Play Pause Pulsing Icon
+                                    Box(
+                                        modifier = Modifier
+                                            .background(Color.White.copy(alpha = 0.2f), CircleShape)
+                                            .padding(4.dp)
+                                            .clip(CircleShape)
+                                            .background(Color.White, CircleShape)
+                                            .clickable {
+                                                if (isPlaying) player.pause() else player.play()
+                                            }
+                                            .size(48.dp),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                                            contentDescription = "Play/Pause",
+                                            tint = Color.Black,
+                                            modifier = Modifier.size(28.dp)
+                                        )
+                                    }
+
+                                    // Seek Forward
+                                    IconButton(
+                                        onClick = {
+                                            val newPos = (player.currentPosition + 10000).coerceAtMost(player.duration)
+                                            player.seekTo(newPos)
+                                        },
+                                        modifier = Modifier.size(40.dp)
+                                    ) {
+                                        Icon(Icons.Default.Forward10, "Forward 10s", tint = Color.White, modifier = Modifier.size(28.dp))
+                                    }
+
+                                    // Aspect Ratio cycling
+                                    IconButton(
+                                        onClick = {
+                                            aspectRatio = when (aspectRatio) {
+                                                VideoAspectRatio.FIT -> VideoAspectRatio.FILL
+                                                VideoAspectRatio.FILL -> VideoAspectRatio.STRETCH
+                                                VideoAspectRatio.STRETCH -> VideoAspectRatio.FIT
+                                            }
+                                        },
+                                        modifier = Modifier
+                                            .background(Color.White.copy(alpha = 0.1f), CircleShape)
+                                            .size(36.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = when (aspectRatio) {
+                                                VideoAspectRatio.FIT -> Icons.Outlined.AspectRatio
+                                                VideoAspectRatio.FILL -> Icons.Default.CropFree
+                                                VideoAspectRatio.STRETCH -> Icons.Default.FitScreen
+                                            },
+                                            contentDescription = "Aspect Ratio",
+                                            tint = Color.White,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
@@ -745,7 +789,7 @@ private fun PlayerContent(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(bottom = if (isControlsVisible) 135.dp else 45.dp)
+                    .padding(bottom = if (isControlsVisible) 220.dp else 45.dp)
                     .padding(horizontal = 48.dp),
                 contentAlignment = Alignment.BottomCenter
             ) {

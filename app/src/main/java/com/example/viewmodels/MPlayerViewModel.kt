@@ -1,6 +1,7 @@
 package com.example.viewmodels
 
 import android.app.Application
+import android.content.Context
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
@@ -9,6 +10,7 @@ import com.example.database.FavoriteEntity
 import com.example.database.HistoryEntity
 import com.example.database.PlaylistEntity
 import com.example.database.PlaylistVideoCrossRef
+import com.example.database.NetworkStreamEntity
 import com.example.models.FolderItem
 import com.example.models.VideoItem
 import com.example.repository.VideoRepository
@@ -26,6 +28,82 @@ class MPlayerViewModel(
     application: Application,
     private val repository: VideoRepository
 ) : AndroidViewModel(application) {
+
+    // Persistent Settings Preferences
+    private val prefs = application.getSharedPreferences("mplayer_prefs", Context.MODE_PRIVATE)
+
+    val hardwareDecoding = MutableStateFlow(prefs.getBoolean("hardwareDecoding", true))
+    val audioBoost = MutableStateFlow(prefs.getBoolean("audioBoost", false))
+    val backgroundPlayback = MutableStateFlow(prefs.getBoolean("backgroundPlayback", false))
+    val gestureSeeking = MutableStateFlow(prefs.getBoolean("gestureSeeking", true))
+    val autoPlayNext = MutableStateFlow(prefs.getBoolean("autoPlayNext", true))
+    val doubleTapSeekSeconds = MutableStateFlow(prefs.getInt("doubleTapSeekSeconds", 10))
+    val subtitleTextScale = MutableStateFlow(prefs.getString("subtitleTextScale", "Default") ?: "Default")
+    val subtitleColor = MutableStateFlow(prefs.getString("subtitleColor", "White") ?: "White")
+    val autoRotate = MutableStateFlow(prefs.getBoolean("autoRotate", true))
+    val keepScreenOn = MutableStateFlow(prefs.getBoolean("keepScreenOn", true))
+    val selectedAccent = MutableStateFlow(prefs.getString("selectedAccent", "Purple") ?: "Purple")
+
+    fun updateHardwareDecoding(value: Boolean) {
+        prefs.edit().putBoolean("hardwareDecoding", value).apply()
+        hardwareDecoding.value = value
+    }
+    fun updateAudioBoost(value: Boolean) {
+        prefs.edit().putBoolean("audioBoost", value).apply()
+        audioBoost.value = value
+    }
+    fun updateBackgroundPlayback(value: Boolean) {
+        prefs.edit().putBoolean("backgroundPlayback", value).apply()
+        backgroundPlayback.value = value
+    }
+    fun updateGestureSeeking(value: Boolean) {
+        prefs.edit().putBoolean("gestureSeeking", value).apply()
+        gestureSeeking.value = value
+    }
+    fun updateAutoPlayNext(value: Boolean) {
+        prefs.edit().putBoolean("autoPlayNext", value).apply()
+        autoPlayNext.value = value
+    }
+    fun updateDoubleTapSeekSeconds(value: Int) {
+        prefs.edit().putInt("doubleTapSeekSeconds", value).apply()
+        doubleTapSeekSeconds.value = value
+    }
+    fun updateSubtitleTextScale(value: String) {
+        prefs.edit().putString("subtitleTextScale", value).apply()
+        subtitleTextScale.value = value
+    }
+    fun updateSubtitleColor(value: String) {
+        prefs.edit().putString("subtitleColor", value).apply()
+        subtitleColor.value = value
+    }
+    fun updateAutoRotate(value: Boolean) {
+        prefs.edit().putBoolean("autoRotate", value).apply()
+        autoRotate.value = value
+    }
+    fun updateKeepScreenOn(value: Boolean) {
+        prefs.edit().putBoolean("keepScreenOn", value).apply()
+        keepScreenOn.value = value
+    }
+    fun updateSelectedAccent(value: String) {
+        prefs.edit().putString("selectedAccent", value).apply()
+        selectedAccent.value = value
+    }
+
+    // Network Streams
+    val networkStreams: StateFlow<List<NetworkStreamEntity>> = repository.networkStreamsFlow
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    fun addNetworkStream(title: String, url: String) {
+        viewModelScope.launch {
+            repository.addNetworkStream(title, url)
+        }
+    }
+
+    fun deleteNetworkStream(id: Long) {
+        viewModelScope.launch {
+            repository.deleteNetworkStream(id)
+        }
+    }
 
     // UI States
     private val _allVideos = MutableStateFlow<List<VideoItem>>(emptyList())

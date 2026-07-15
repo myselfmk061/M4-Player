@@ -26,6 +26,17 @@ class VideoRepository(
     // Private Vault Flow
     val vaultVideosFlow: Flow<List<VaultVideoEntity>> = dao.getVaultVideosFlow()
 
+    // Network Streams Flows
+    val networkStreamsFlow: Flow<List<NetworkStreamEntity>> = dao.getNetworkStreams()
+
+    suspend fun addNetworkStream(title: String, url: String) {
+        dao.insertNetworkStream(NetworkStreamEntity(title = title, url = url))
+    }
+
+    suspend fun deleteNetworkStream(id: Long) {
+        dao.deleteNetworkStream(id)
+    }
+
     // Query local videos from device MediaStore, ignoring those moved into vault
     suspend fun scanLocalVideos(filterPrivate: Boolean = true): List<VideoItem> = withContext(Dispatchers.IO) {
         val videos = mutableListOf<VideoItem>()

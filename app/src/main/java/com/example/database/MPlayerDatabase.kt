@@ -56,8 +56,26 @@ data class VaultVideoEntity(
     @PrimaryKey val videoPath: String
 )
 
+@Entity(tableName = "network_streams")
+data class NetworkStreamEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val title: String,
+    val url: String,
+    val dateAdded: Long = System.currentTimeMillis()
+)
+
 @Dao
 interface MPlayerDao {
+    // Network Streams
+    @Query("SELECT * FROM network_streams ORDER BY dateAdded DESC")
+    fun getNetworkStreams(): Flow<List<NetworkStreamEntity>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertNetworkStream(stream: NetworkStreamEntity)
+
+    @Query("DELETE FROM network_streams WHERE id = :id")
+    suspend fun deleteNetworkStream(id: Long)
+
     // Favorites
     @Query("SELECT * FROM favorites ORDER BY dateAdded DESC")
     fun getFavorites(): Flow<List<FavoriteEntity>>
@@ -143,9 +161,10 @@ interface MPlayerDao {
         PlaylistEntity::class,
         PlaylistVideoCrossRef::class,
         VaultSettingEntity::class,
-        VaultVideoEntity::class
+        VaultVideoEntity::class,
+        NetworkStreamEntity::class
     ],
-    version = 1,
+    version = 2,
     exportSchema = false
 )
 abstract class MPlayerDatabase : RoomDatabase() {

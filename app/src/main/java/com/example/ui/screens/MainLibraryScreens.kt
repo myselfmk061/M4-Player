@@ -889,9 +889,14 @@ fun FavoritesScreen(
 }
 
 @Composable
-fun NetworkScreen(onStreamClick: (String) -> Unit) {
+fun NetworkScreen(
+    viewModel: MPlayerViewModel,
+    onStreamClick: (String) -> Unit
+) {
     var url by remember { mutableStateOf("") }
-    val streamedLinks = remember { mutableStateListOf<String>() }
+    var title by remember { mutableStateOf("") }
+    val networkStreams by viewModel.networkStreams.collectAsState()
+    val context = LocalContext.current
 
     Column(
         modifier = Modifier
@@ -912,6 +917,19 @@ fun NetworkScreen(onStreamClick: (String) -> Unit) {
             modifier = Modifier.padding(horizontal = 16.dp)
         )
         Spacer(modifier = Modifier.height(24.dp))
+
+        OutlinedTextField(
+            value = title,
+            onValueChange = { title = it },
+            label = { Text("Stream Title (Optional)") },
+            modifier = Modifier
+                .fillMaxWidth()
+                .testTag("stream_title_input"),
+            shape = RoundedCornerShape(12.dp),
+            singleLine = true
+        )
+
+        Spacer(modifier = Modifier.height(12.dp))
 
         OutlinedTextField(
             value = url,
@@ -936,8 +954,11 @@ fun NetworkScreen(onStreamClick: (String) -> Unit) {
         Button(
             onClick = {
                 if (url.isNotEmpty()) {
-                    streamedLinks.add(url)
-                    onStreamClick(url)
+                    val streamTitle = if (title.trim().isEmpty()) "Stream Link" else title.trim()
+                    viewModel.addNetworkStream(streamTitle, url.trim())
+                    onStreamClick(url.trim())
+                    url = ""
+                    title = ""
                 }
             },
             modifier = Modifier
@@ -952,21 +973,30 @@ fun NetworkScreen(onStreamClick: (String) -> Unit) {
             Text("Initiate Player")
         }
 
-        if (streamedLinks.isNotEmpty()) {
+        if (networkStreams.isNotEmpty()) {
             Spacer(modifier = Modifier.height(32.dp))
-            Text("Recent Streams", fontWeight = FontWeight.SemiBold, modifier = Modifier.fillMaxWidth())
+            Text("Saved Streams", fontWeight = FontWeight.SemiBold, modifier = Modifier.fillMaxWidth())
             Spacer(modifier = Modifier.height(8.dp))
             LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(streamedLinks) { link ->
+                items(networkStreams) { stream ->
                     Card(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clickable { onStreamClick(link) }
+                            .clickable { onStreamClick(stream.url) }
                     ) {
                         Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
                             Icon(Icons.Default.Link, null, tint = MaterialTheme.colorScheme.primary)
                             Spacer(modifier = Modifier.width(12.dp))
-                            Text(link, maxLines = 1, overflow = TextOverflow.Ellipsis, fontSize = 13.sp, modifier = Modifier.weight(1f))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(stream.title, fontWeight = FontWeight.SemiBold, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Text(stream.url, fontSize = 11.sp, color = Color.Gray, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            }
+                            IconButton(onClick = {
+                                viewModel.deleteNetworkStream(stream.id)
+                                Toast.makeText(context, "Deleted stream: ${stream.title}", Toast.LENGTH_SHORT).show()
+                            }) {
+                                Icon(Icons.Default.Delete, "Delete stream", tint = MaterialTheme.colorScheme.error)
+                            }
                         }
                     }
                 }
@@ -976,30 +1006,22 @@ fun NetworkScreen(onStreamClick: (String) -> Unit) {
 }
 
 @Composable
-fun SettingsScreen() {
+fun SettingsScreen(viewModel: MPlayerViewModel) {
     val context = LocalContext.current
     val scrollState = rememberScrollState()
 
-    // Decoder configuration
-    var hardwareDecoding by remember { mutableStateOf(true) }
-    var audioBoost by remember { mutableStateOf(false) }
-
-    // Playback preferences
-    var backgroundPlayback by remember { mutableStateOf(false) }
-    var gestureSeeking by remember { mutableStateOf(true) }
-    var autoPlayNext by remember { mutableStateOf(true) }
-    var doubleTapSeekSeconds by remember { mutableStateOf(10) }
-
-    // Subtitle styling preferences
-    var subtitleTextScale by remember { mutableStateOf("Default") }
-    var subtitleColor by remember { mutableStateOf("White") }
-
-    // Display preferences
-    var autoRotate by remember { mutableStateOf(true) }
-    var keepScreenOn by remember { mutableStateOf(true) }
-
-    // Appearance Accent Theme selection
-    var selectedAccent by remember { mutableStateOf("Purple") }
+    // Observe StateFlows from ViewModel
+    val hardwareDecoding by viewModel.hardwareDecoding.collectAsState()
+    val audioBoost by viewModel.audioBoost.collectAsState()
+    val backgroundPlayback by viewModel.backgroundPlayback.collectAsState()
+    val gestureSeeking by viewModel.gestureSeeking.collectAsState()
+    val autoPlayNext by viewModel.autoPlayNext.collectAsState()
+    val doubleTapSeekSeconds by viewModel.doubleTapSeekSeconds.collectAsState()
+    val subtitleTextScale by viewModel.subtitleTextScale.collectAsState()
+    val subtitleColor by viewModel.subtitleColor.collectAsState()
+    val autoRotate by viewModel.autoRotate.collectAsState()
+    val keepScreenOn by viewModel.keepScreenOn.collectAsState()
+    val selectedAccent by viewModel.selectedAccent.collectAsState()
 
     Column(
         modifier = Modifier
@@ -1048,7 +1070,7 @@ fun SettingsScreen() {
                         Text("Hardware Acceleration", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
                         Text("Leverage device GPU chipsets for optimal hardware decoding.", fontSize = 11.sp, color = Color.Gray)
                     }
-                    Switch(checked = hardwareDecoding, onCheckedChange = { hardwareDecoding = it })
+                    Switch(checked = hardwareDecoding, onCheckedChange = { viewModel.updateHardwareDecoding(it) })
                 }
 
                 Spacer(modifier = Modifier.height(16.dp))
@@ -1062,7 +1084,7 @@ fun SettingsScreen() {
                         Text("Audio Boost (SW)", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
                         Text("Amplify software maximum volume level up to 200%.", fontSize = 11.sp, color = Color.Gray)
                     }
-                    Switch(checked = audioBoost, onCheckedChange = { audioBoost = it })
+                    Switch(checked = audioBoost, onCheckedChange = { viewModel.updateAudioBoost(it) })
                 }
             }
         }
@@ -1099,7 +1121,7 @@ fun SettingsScreen() {
                         Text("Background Audio", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
                         Text("Continue playing video audio stream when switching apps.", fontSize = 11.sp, color = Color.Gray)
                     }
-                    Switch(checked = backgroundPlayback, onCheckedChange = { backgroundPlayback = it })
+                    Switch(checked = backgroundPlayback, onCheckedChange = { viewModel.updateBackgroundPlayback(it) })
                 }
 
                 Spacer(modifier = Modifier.height(16.dp))
@@ -1113,7 +1135,7 @@ fun SettingsScreen() {
                         Text("Swipe Gestures", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
                         Text("Control brightness, volume, and seek by swiping on screen.", fontSize = 11.sp, color = Color.Gray)
                     }
-                    Switch(checked = gestureSeeking, onCheckedChange = { gestureSeeking = it })
+                    Switch(checked = gestureSeeking, onCheckedChange = { viewModel.updateGestureSeeking(it) })
                 }
 
                 Spacer(modifier = Modifier.height(16.dp))
@@ -1127,7 +1149,7 @@ fun SettingsScreen() {
                         Text("Auto-play Next Video", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
                         Text("Automatically play the next file in playlist queue.", fontSize = 11.sp, color = Color.Gray)
                     }
-                    Switch(checked = autoPlayNext, onCheckedChange = { autoPlayNext = it })
+                    Switch(checked = autoPlayNext, onCheckedChange = { viewModel.updateAutoPlayNext(it) })
                 }
 
                 Spacer(modifier = Modifier.height(16.dp))
@@ -1144,7 +1166,7 @@ fun SettingsScreen() {
                         listOf(5, 10, 15, 30).forEach { seconds ->
                             val isSelected = doubleTapSeekSeconds == seconds
                             OutlinedButton(
-                                onClick = { doubleTapSeekSeconds = seconds },
+                                onClick = { viewModel.updateDoubleTapSeekSeconds(seconds) },
                                 modifier = Modifier.weight(1f),
                                 shape = RoundedCornerShape(8.dp),
                                 colors = ButtonDefaults.outlinedButtonColors(
@@ -1195,7 +1217,7 @@ fun SettingsScreen() {
                         listOf("Compact", "Default", "Large").forEach { scale ->
                             val isSelected = subtitleTextScale == scale
                             OutlinedButton(
-                                onClick = { subtitleTextScale = scale },
+                                onClick = { viewModel.updateSubtitleTextScale(scale) },
                                 modifier = Modifier.weight(1f),
                                 shape = RoundedCornerShape(8.dp),
                                 colors = ButtonDefaults.outlinedButtonColors(
@@ -1233,7 +1255,7 @@ fun SettingsScreen() {
                                     .size(36.dp)
                                     .clip(CircleShape)
                                     .background(colorVal)
-                                    .clickable { subtitleColor = colorName }
+                                    .clickable { viewModel.updateSubtitleColor(colorName) }
                                     .border(
                                         width = if (isSelected) 3.dp else 1.dp,
                                         color = if (isSelected) MaterialTheme.colorScheme.primary else Color.Gray,
@@ -1278,7 +1300,7 @@ fun SettingsScreen() {
                         Text("Auto-rotate Screen", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
                         Text("Automatically switch player orientation to fit video aspect ratio.", fontSize = 11.sp, color = Color.Gray)
                     }
-                    Switch(checked = autoRotate, onCheckedChange = { autoRotate = it })
+                    Switch(checked = autoRotate, onCheckedChange = { viewModel.updateAutoRotate(it) })
                 }
 
                 Spacer(modifier = Modifier.height(16.dp))
@@ -1292,7 +1314,7 @@ fun SettingsScreen() {
                         Text("Keep Screen Awake", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
                         Text("Prevent device from turning off display while video is playing.", fontSize = 11.sp, color = Color.Gray)
                     }
-                    Switch(checked = keepScreenOn, onCheckedChange = { keepScreenOn = it })
+                    Switch(checked = keepScreenOn, onCheckedChange = { viewModel.updateKeepScreenOn(it) })
                 }
             }
         }
@@ -1342,7 +1364,7 @@ fun SettingsScreen() {
                                     .size(36.dp)
                                     .clip(CircleShape)
                                     .background(colorVal)
-                                    .clickable { selectedAccent = name }
+                                    .clickable { viewModel.updateSelectedAccent(name) }
                                     .border(
                                         width = if (isSelected) 3.dp else 1.dp,
                                         color = if (isSelected) Color.White else Color.Transparent,
@@ -1372,17 +1394,17 @@ fun SettingsScreen() {
         ) {
             OutlinedButton(
                 onClick = {
-                    hardwareDecoding = true
-                    audioBoost = false
-                    backgroundPlayback = false
-                    gestureSeeking = true
-                    autoPlayNext = true
-                    doubleTapSeekSeconds = 10
-                    subtitleTextScale = "Default"
-                    subtitleColor = "White"
-                    autoRotate = true
-                    keepScreenOn = true
-                    selectedAccent = "Purple"
+                    viewModel.updateHardwareDecoding(true)
+                    viewModel.updateAudioBoost(false)
+                    viewModel.updateBackgroundPlayback(false)
+                    viewModel.updateGestureSeeking(true)
+                    viewModel.updateAutoPlayNext(true)
+                    viewModel.updateDoubleTapSeekSeconds(10)
+                    viewModel.updateSubtitleTextScale("Default")
+                    viewModel.updateSubtitleColor("White")
+                    viewModel.updateAutoRotate(true)
+                    viewModel.updateKeepScreenOn(true)
+                    viewModel.updateSelectedAccent("Purple")
                     Toast.makeText(context, "Preferences have been reset to factory defaults", Toast.LENGTH_SHORT).show()
                 },
                 modifier = Modifier.weight(1f),
